@@ -52,7 +52,12 @@ HAS_SNAP=0
 HAS_DISTROBOX=0
 HAS_FIRMWARE=0
 HAS_FASTFETCH=0
+HAS_BREW=0
 
+
+if command -v "brew" &> /dev/null; then
+		HAS_BREW=1
+fi
 if command -v "flatpak" &> /dev/null; then
   HAS_FLATPAK=1
 fi
@@ -81,6 +86,7 @@ check_updates(){
   HASUP=0
   UPCNT_SOLUS=0
   UPCNT_FP=0
+  UPCNT_BW=0
   UPMSG_FP=""
   NOTI_LVL="normal"
   NOTI_ID=""
@@ -98,6 +104,9 @@ check_updates(){
   UPCNT_SOLUS_USTBL=`pkcon get-updates --plain | grep -i -c "(Unstable)"`
 
 
+  if [ "$HAS_BREW" -eq 1 ]; then
+		UPCNT_BW=`brew outdated | wc -l`
+  fi
   if [ "$HAS_FLATPAK" -eq 1 ]; then
     UPCNT_FP=`flatpak remote-ls --updates | wc -l`
   fi
@@ -129,6 +138,12 @@ check_updates(){
       echo "\n" >> "$UL_CACHE_FILE"
       hr >> "$UL_CACHE_FILE"
     fi
+	if [ "$UPCNT_BW" -gt 0 ]; then
+		echo "Brew: " >> "$UL_CACHE_FILE"
+		brew outdated >> "$UL_CACHE_FILE"
+		echo "\n" >> "$UL_CACHE_FILE"
+		hr >> "$UL_CACHE_FILE"
+	fi
   else
     UPMSG="$MSG_UPD_NONE"
   fi
@@ -179,6 +194,10 @@ clean_cache(){
 
           rm -f "$FP_TEMP_FILE"
         fi
+
+		if [ "$HAS_BREW" -eq 1 ]; then
+				brew list -1 
+		fi
 
       fi
       check_updates &
