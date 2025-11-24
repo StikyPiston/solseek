@@ -43,6 +43,8 @@ PA_CACHE_FILE="$HOME/.cache/solseek/apackages"
 PI_CACHE_FILE="$HOME/.cache/solseek/ipackages"
 FA_CACHE_FILE="$HOME/.cache/solseek/aflatpaks"
 FI_CACHE_FILE="$HOME/.cache/solseek/iflatpaks"
+BA_CACHE_FILE="$HOME/.cache/solseek/abrew"
+BI_CACHE_FILE="$HOME/.cache/solseek/ibrew"
 UP_CACHE_FILE="$HOME/.cache/solseek/updatemsg"
 UL_CACHE_FILE="$HOME/.cache/solseek/updatelst"
 
@@ -155,6 +157,8 @@ clean_cache(){
     rm -f "$PA_CACHE_FILE"
     rm -f "$FI_CACHE_FILE"
     rm -f "$FA_CACHE_FILE"
+	rm -f "$BI_CACHE_FILE"
+	rm -f "$BA_CACHE_FILE"
     if [ "$1" == "regen" ]; then
       echo "$MSG_GEN_CACHE"
       if [ "$HAS_FLATPAK" -eq 1 ]; then
@@ -196,7 +200,9 @@ clean_cache(){
         fi
 
 		if [ "$HAS_BREW" -eq 1 ]; then
-				brew list -1 
+				brew list -1 --formulae | grep -v "==>" > "$BI_CACHE_FILE" &
+
+				brew search '.*' | sed 's/^[[:space:]]*//; s/^[^A-Za-z0-9]*//' | tr ' ' '\n' | sed '/^$/d' > "$BA_CACHE_FILE" &
 		fi
 
       fi
@@ -516,6 +522,7 @@ elif [ "$1" == "-u" ]; then
   shift $((OPTIND-1))
   up_eo=0
   up_fp=0
+  up_bw=0
   up_sn=0
   up_db=0
   up_fw=0
@@ -547,6 +554,11 @@ elif [ "$1" == "-u" ]; then
     hr
     echo -e "\e[1;34m█ SNAP\e[0m\n"
     sudo snap refresh
+  fi
+  if (( up_bw == 1 && HAS_BREW == 1 )); then
+		hr
+		echo -e "\e[1;34m█ BREW\e[0m\n"
+		brew update
   fi
   if (( up_db == 1 && HAS_DISTROBOX == 1 )); then
     hr
