@@ -248,8 +248,14 @@ if [ "$1" == "-ssh" ]; then
       UPMSG="$(<$UP_CACHE_FILE)"
   esac
   case "$2" in
-    "AMM_LST_PA" | "AMM_LST_PI" | "AMM_LST_PU" | "AMM_LST_FA" | "AMM_LST_FI")
+    "AMM_LST_PA" | "AMM_LST_PI" | "AMM_LST_PU" | "AMM_LST_FA" | "AMM_LST_FI" | "AMM_LST_BA" | "AMM_LST_BI")
       printf "$(<$SS_LANG_PATH/list.txt )" | fold -s -w 80 2>/dev/null ;;
+    "AMM_LST_BA" | "AMM_LST_BI")
+			printf "$($SS_LANG_PATH/list.txt)" | foild -s -w 80 2>/dev/null ;;
+    "AMM_LST_BA")
+			cat "$BA_CACHE_FILE" ;;
+    "AMM_LST_BI")
+			cat "$BI_CACHE_FILE" ;;
     "AMM_UPSYS")
       printf "$MSG_UPD_AVAIL_UPD: $UPMSG\n"
       hr
@@ -296,7 +302,13 @@ elif [ "$1" == "-ssi" ]; then
       hr
       echo -e "\033[1m> $2 \033[0m\n"
     fi
+    if [[ "$2" == brew:* ]]; then
+    pkg="${2#brew:}"
+    brew info "$pkg" 2>/dev/null | fold -s -w 60 2>/dev/null
+  else
     eopkg info $2 | awk 'NR==1{next} / :/{if(NR>2)print ""; sub(/\s+:\s*/, ":\n"); print; next} {sub(/^\s+/, ""); print} END{print ""}' | fold -s -w 60 2>/dev/null
+
+  fi
 
   else
     echo "$MSG_GEN_SEL_ITEM"
@@ -510,6 +522,54 @@ elif [ "$1" == "-ssf" ]; then
       echo -e "\e[1;31m$MSG_PKG_TTLSTART $pkg_mgmt_title\e[0m"
       hr
       flatpak $pkg_mgmt_act $pkgvars $SS_ASSUMEYES
+      if [ "$ccache" -eq 1 ]; then
+        clean_cache "regen"
+      fi
+      hr 3
+      echo "$MSG_GEN_PROCCOMP"
+      read -p "$MSG_GEN_PRESSENTER..."
+  fi
+  exit 0
+elif [ "$1" == "-ssb" ]; then
+  if [ $# -lt 3 ]; then
+    echo "$MSG_GEN_INVPARAM"
+    read -p "$MSG_GEN_PRESSENTER..."
+  else
+      ccache=0
+      pkgvars="${3//$'\n'/ }"
+      if [ "$2" == "install" ]; then
+        pkg_mgmt_act="install"
+        pkg_mgmt_title="$ACT_PKG_INSTALL: $pkgvars"
+        ccache=1
+      elif [ "$2" == "reinstall" ]; then
+        pkg_mgmt_act="reinstall"
+        pkg_mgmt_title="$ACT_PKG_REINSTALL: $pkgvars"
+        ccache=1
+      elif [ "$2" == "update" ]; then
+        pkg_mgmt_act="upgrade"
+        pkg_mgmt_title="$ACT_PKG_UPDATE: $pkgvars"
+        ccache=1
+      elif [ "$2" == "remove" ]; then
+        pkg_mgmt_act="uninstall"
+        pkg_mgmt_title="$ACT_PKG_REMOVE: $pkgvars"
+        ccache=1
+      elif [ "$2" == "check" ]; then
+        pkg_mgmt_act="outdated"
+        pkg_mgmt_title="$ACT_PKG_CHECK: $pkgvars"
+      fi
+
+      hr 3
+      echo -e "\e[1;31m$MSG_PKG_TTLSTART $pkg_mgmt_title\e[0m"
+      hr
+      # Run brew actions (no sudo)
+      if [ "$pkg_mgmt_act" = "outdated" ]; then
+        brew outdated ${pkgvars}
+      else
+        # install/reinstall/upgrade/uninstall
+        for p in ${pkgvars}; do
+          brew $pkg_mgmt_act $p $SS_ASSUMEYES
+        done
+      fi
       if [ "$ccache" -eq 1 ]; then
         clean_cache "regen"
       fi
@@ -783,6 +843,51 @@ if [ "$ISSA" -eq 1 ]; then
         "AMP_UPDT") solseek -ssf update "$package" ;;
         "A_BACK" | "") continue ;;
       esac
+
+# Brew Sub Action (installed / available)
+elif [ "$2" = "lbi" ] || [ "$2" = "lba" ]; then
+    # Brew List
+    if [ ! -f "$BI_CACHE_FILE" ] || [ -n "$(find "$BI_CACHE_FILE" -mmin +"$SS_CACHE_EXPIRES" 2>/dev/null)" ] || [ ! -f "$BA_CACHE_FILE" ] || [ -n "$(find "$BA_CACHE_FILE" -mmin +"$SS_CACHE_EXPIRES" 2>/dev/null)" ]; then
+        clean_cache "regen"
+    fi
+
+    if [ "$2" = "lbi" ]; then
+      app_list=$(< "$BI_CACHE_FILE")
+      pkg_list_type="$ACT_MAIN_LISTIPKGS"
+    else
+      app_list=$(< "$BA_CACHE_FILE")
+      pkg_list_type="$ACT_MAIN_LISTAPKGS"
+    fi
+
+    # Present brew packages (package name on right side)
+    pkg=$(printf "%b" "$app_list" | pkg_fzf --prompt="$MSG_PKG_PROMPT: " --header="$ACT_MAIN_BREW - $pkg_list_type" --preview 'solseek -ssi brew:{1}')
+
+    # Return to main menu
+    [ -z "$pkg" ] && exit 0
+
+    package=$(echo "$pkg" | grep -o '[^ ]*|' | tr -d '|')
+
+    if grep -q "$package" "$BI_CACHE_FILE"; then
+      pkg_status="$MSG_GEN_INSTALLED"
+
+      MENU_PKG=$(echo "$MENU_MPKG" | grep -v '^AMP_FPREP|')
+    else
+      pkg_status="$MSG_GEN_AVAILABLE"
+      MENU_PKG="$MENU_IPKG"
+    fi
+    package="${package//$'\n'/ }"
+    # PACKAGE ACTION for brew
+    pkgAction=$(printf "%b" "$MENU_PKG" | sa_fzf --prompt="" --header="$MSG_PKG_FPSEL" --preview "solseek -ssh SELPKG '$package'")
+
+    pkgAction=${pkgAction%|*}
+    case "$pkgAction" in
+      "AMP_INST") solseek -ssb install "$package" ;;
+      "AMP_RINST") solseek -ssb reinstall "$package" ;;
+      "AMP_REM") solseek -ssb remove "$package" ;;
+      "AMP_SCHK") solseek -ssb check "$package" ;;
+      "AMP_UPDT") solseek -ssb update "$package" ;;
+      "A_BACK" | "") continue ;;
+    esac
   # Packages Sub Action
   elif [ "$2" = "li" ] || [ "$2" = "la" ]; then
 
@@ -857,6 +962,8 @@ while true; do
     "AMM_LST_FI") solseek subact lif ;;
     "AMM_UPSYS") solseek subact upsys ;;
     "AMM_TOOLS") solseek subact tools ;;
+    "AMM_LST_BA") solseek subact lba ;;
+    "AMM_LST_BI") solseek subact lbi ;;
     *) continue ;;
   esac
 done
